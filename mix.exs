@@ -42,7 +42,7 @@ defmodule NervesHubLink.MixProject do
         device_api_sni: "device.nerves-hub.org",
         fwup_public_keys: []
       ],
-      extra_applications: [:logger, :iex],
+      extra_applications: [:logger, :iex, :inets],
       mod: {NervesHubLink.Application, []}
     ]
   end
@@ -59,6 +59,7 @@ defmodule NervesHubLink.MixProject do
     [
       flags: [:race_conditions, :error_handling, :underspecs, :unmatched_returns],
       plt_add_apps: [:atecc508a, :nerves_key, :nerves_key_pkcs11],
+      ignore_warnings: "dialyzer-ignore.exs",
       list_unused_filters: true
     ]
   end
