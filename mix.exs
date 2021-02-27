@@ -104,7 +104,7 @@ defmodule NervesHubLink.MixProject do
       {:nerves_key, "~> 0.5", optional: true},
       {:nerves_runtime, "~> 0.8"},
       {:nerves_hub_link_common, "~> 0.2.0"},
-      {:slipstream, "~> 0.5"},
+      {:slipstream, "~> 0.6.0"},
       {:x509, "~> 0.5"}
     ]
   end
