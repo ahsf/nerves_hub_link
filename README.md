@@ -54,9 +54,9 @@ list:
   defp deps do
     [
       {:nerves, "~> 1.7", runtime: false},
-      {:nerves_hub_cli, "~> 0.10", runtime: false}
+      {:nerves_hub_cli, "~> 0.10", runtime: false},
       ...
-    ] ++ deps(@target)
+    ]
   end
 ```
 
@@ -85,101 +85,21 @@ your dependencies. For example:
 ```elixir
   defp deps(target) do
     [
-      {:nerves_runtime, "~> 0.11"},
-      {:nerves_hub_link, "~> 0.9"},
-      {:nerves_time, "~> 0.2"},
       ...
-    ] ++ system(target)
+      {:nerves_runtime, "~> 0.11", targets: @all_targets},
+      {:nerves_hub_link, "~> 0.10", targets: @all_targets},
+      {:nerves_time, "~> 0.4", targets: @all_targets},
+      ...
+    ]
   end
 ```
 
-Next, update your `config.exs` so that the `nerves_hub_link` library can help
+Run `mix deps.get`. Next, update your `config.exs` so that the `nerves_hub_link` library can help
 provision devices. Do this by adding `provisioning: :nerves_hub_link` to the
 `:nerves, :firmware` option like this:
 
 ```elixir
-config :nerves, :firmware,
-  provisioning: :nerves_hub_link
-```
-
-The library won't connect to [nerves-hub.org](https://nerves-hub.org) unless
-requested and SSL options must be configured.
-
-If using [NervesKey](https://github.com/nerves-hub/nerves_key), you can tell
-`NervesHubLink` to read those certificates and key from the chip and assign
-the SSL options for you by enabling add it as a dependency:
-
-```elixir
-def deps() do
-  [
-    {:nerves_key, "~> 0.5"}
-  ]
-end
-```
-
-NervesKey will default to using I2C bus 1 and the `:primary` certificate pair
-(`:primary` is one-time configurable and `:aux` may be updated).  You can
-customize these options to use a different bus and certificate pair:
-
-```elixir
-config :nerves_hub_link, :nerves_key,
-  certificate_pair: :aux,
-  i2c_bus: 0
-```
-
-If you aren't using NervesKey, you can also provide your own options
-to use for the NervesHub socket connection via the `:socket` and `:ssl` keys,
-which are forwarded on to `phoenix_client` when creating the socket connection (see
-[`PhoenixClient.Socket`
-module](https://github.com/mobileoverlord/phoenix_client/blob/main/lib/phoenix_client/socket.ex#L57-L91)
-for support options.
-
-Any [valid Erlang ssl socket
-option](http://erlang.org/doc/man/ssl.html#TLS/DTLS%20OPTION%20DESCRIPTIONS%20-%20COMMON%20for%20SERVER%20and%20CLIENT)
-can go in the `:ssl` key.
-
-```elixir
-config :nerves_hub_link,
-  socket: [
-    json_library: Jason,
-    heartbeat_interval: 45_000
-  ],
-  ssl: [
-    cert: "some_cert_der",
-    keyfile: "path/to/keyfile"
-  ]
-```
-
-### Runtime configuration
-
-Some cases require that connection configuration happens at runtime like
-selectively choosing which cert/key to use based on device, or reading a file
-stored on device which isn't available during compilation.
-
-Whatever the reason, `NervesHubLink` also supports runtime configuration via the
-`NervesHubLink.Configurator` behavior. This is called during application startup
-to build the configuration that is to be used for the connection. When
-implementing the behavior, you'll receive the initial default config read in
-from the application environment and you can modify it however you need.
-
-For example:
-
-```elixir
-defmodule MyApp.Configurator do
-  @behaviour NervesHubLink.Configurator
-
-  @impl NervesHubLink.Configurator
-  def build(config) do
-    ssl = [certfile: "/root/ssl/cert.pem", keyfile: "/root/ssl/key.pem"]
-    %{config | ssl: ssl}
-  end
-end
-```
-
-Then you specify which configurator `NervesHubLink` should use in `config.exs`:
-
-```elixir
-config :nerves_hub_link, configurator: MyApp.Configurator
+config :nerves, :firmware, provisioning: :nerves_hub_link
 ```
 
 ### Creating a NervesHub product
@@ -242,17 +162,7 @@ receives from a NervesHub server before applying the update. This protects the
 device against anyone tampering with the firmware image between when it was
 signed by you and when it is installed.
 
-All firmware signing public keys need to be added to your `config.exs`. Keys
-that are stored locally (like the one we just created) can be referred to by
-their atom name:
-
-```elixir
-config :nerves_hub_link,
-  fwup_public_keys: [:devkey]
-```
-
-If you have keys that cannot be stored locally, you will have to copy/paste
-their public key:
+All firmware signing public keys need to be added to your `config.exs`. 
 
 ```elixir
 config :nerves_hub_link,
@@ -262,25 +172,63 @@ config :nerves_hub_link,
   ]
 ```
 
-The `nerves_hub_link` dependency converts key names to public keys at compile time.
-If you haven't compiled your project yet, run `mix firmware` now. If you have
-compiled it, `mix` won't know to recompile `nerves_hub_link` due to the configuration
-change. Force it to recompile by running:
-
-```bash
-mix deps.compile nerves_hub_link --force
-mix firmware
-```
-
 While not shown here, you can export keys for safe storage. Additionally, key
 creation and firmware signing can be done outside of the `mix` tooling. The only
 part that is required is that the firmware signing public keys be added to your
 `config.exs` and to the NervesHub server.
 
+### Initializing devices
+
+In this example we will create a device with a hardware identifier `1234`.  The
+device will also be tagged with `qa` so we can target it in our deployment
+group.
+
+```bash
+$ mix nerves_hub.device create
+
+NervesHub server: api.nerves-hub.org:443
+NervesHub organization: nerveshub
+Identifier (e.g., serial number): 1234
+Description: test-1234
+One or more comma-separated tags: qa
+Local user password:
+Device 1234 created
+```
+
+Now create and register a certificate and key pair by running:
+
+```
+mix nerves_hub.device cert create 1234
+```
+
+Device certificates are required for a device to establish a
+connection with the NervesHub server. However, if you are using [NervesKey](https://github.com/nerves-hub/nerves_key),
+you can skip this step.
+
+It is important to note that device certificate private keys are generated and
+stay on your host computer. A certificate signing request is sent to the server,
+and a signed public key is passed back. Generated certificates will be placed in
+a folder titled `nerves-hub` in the current working directory. You can specify a
+different location by passing `--path /path/to/certs` to NervesHubCLI mix
+commands.
+
+NervesHub certificates and hardware identifiers are persisted to the firmware
+when the firmware is burned to the SD card. To make this process easier, you can
+call `nerves_hub.device burn IDENTIFIER`. In this example, we are going to burn
+the firmware and certificates for device `1234` that we created.
+
+```bash
+mix firmware
+mix nerves_hub.device burn 1234
+```
+
+Your device will now connect to NervesHub when it boots and establishes an
+network connection. 
+
 ### Publishing firmware
 
-Uploading firmware to NervesHub is called publishing. To publish firmware start
-by calling:
+
+Uploading firmware to NervesHub is called publishing. To publish firmware start by calling:
 
 ```bash
 mix firmware
@@ -299,47 +247,6 @@ Firmware can also be signed while publishing:
 mix nerves_hub.firmware publish --key devkey
 ```
 
-### Initializing devices
-
-In this example we will create a device with a hardware identifier `1234`.  The
-device will also be tagged with `qa` so we can target it in our deployment
-group. We will select `y` when asked if we would like to generate device
-certificates. Device certificates are required for a device to establish a
-connection with the NervesHub server. However, if you are using [NervesKey](https://github.com/nerves-hub/nerves_key),
-you can select `n` to skip generating device certificates.
-
-```bash
-$ mix nerves_hub.device create
-
-NervesHub organization: nerveshub
-identifier: 1234
-description: test-1234
-tags: qa
-Local user password:
-Device 1234 created
-Would you like to generate certificates? [Yn] y
-Creating certificate for 1234
-Finished
-```
-
-It is important to note that device certificate private keys are generated and
-stay on your host computer. A certificate signing request is sent to the server,
-and a signed public key is passed back. Generated certificates will be placed in
-a folder titled `nerves-hub` in the current working directory. You can specify a
-different location by passing `--path /path/to/certs` to NervesHubCLI mix
-commands.
-
-NervesHub certificates and hardware identifiers are persisted to the firmware
-when the firmware is burned to the SD card. To make this process easier, you can
-call `nerves_hub.device burn IDENTIFIER`. In this example, we are going to burn
-the firmware and certificates for device `1234` that we created.
-
-```bash
-mix nerves_hub.device burn 1234
-```
-
-Your device will now connect to NervesHub when it boots and establishes an
-network connection.
 
 ### Creating deployments
 
@@ -353,8 +260,8 @@ mix nerves_hub.firmware list
 Firmwares:
 ------------
   product:      example
-  version:      0.3.0
-  platform:     rpi3
+  version:      0.1.0
+  platform:     rpi4
   architecture: arm
   uuid:         1cbecdbb-aa7d-5aee-4ba2-864d518417df
 ```
@@ -367,11 +274,11 @@ mix nerves_hub.deployment create
 
 NervesHub organization: nerveshub
 Deployment name: qa_deployment
-firmware uuid: 1cbecdbb-aa7d-5aee-4ba2-864d518417df
-version condition:
-tags: qa
-Local user password:
-Deployment test created
+Firmware uuid: 1cbecdbb-aa7d-5aee-4ba2-864d518417df
+Version condition:
+One or more comma-separated device tags: qa
+Local NervesHub user password:
+Deployment qa_deployment created.
 ```
 
 Here we create a new deployment called `qa_deployment`. In the conditions of this
@@ -394,6 +301,112 @@ We can publish, sign, and deploy firmware in a single command now.
 ```bash
 mix nerves_hub.firmware publish --key devkey --deploy qa_deployment
 ```
+
+Now turn on the deployment by calling
+
+```
+mix nerves_hub.deployment update qa_deployment state on
+```
+
+and the device will be updated.
+
+## Advanced TODO
+
+```
+--- TODO this part is confusing:
+--- per default the device will connect, 
+--- and no further SSL-configuration is needed when using CLI
+```
+The library won't connect to [nerves-hub.org](https://nerves-hub.org) unless
+requested and SSL options must be configured.
+
+### NervesKey
+
+If using [NervesKey](https://github.com/nerves-hub/nerves_key), you can tell
+`NervesHubLink` to read those certificates and key from the chip and assign
+the SSL options for you by enabling add it as a dependency:
+
+```elixir
+def deps() do
+  [
+    {:nerves_key, "~> 0.5"}
+  ]
+end
+```
+
+NervesKey will default to using I2C bus 1 and the `:primary` certificate pair
+(`:primary` is one-time configurable and `:aux` may be updated).  You can
+customize these options to use a different bus and certificate pair:
+
+```elixir
+config :nerves_hub_link, :nerves_key,
+  certificate_pair: :aux,
+  i2c_bus: 0
+```
+
+```
+TODO --- this may be read as: "if you don't use NervesKey you have to do this."
+```
+If you aren't using NervesKey, 
+
+
+### TODO title
+
+you can also provide your own options
+to use for the NervesHub socket connection via the `:socket` and `:ssl` keys,
+which are forwarded on to `phoenix_client` when creating the socket connection (see
+[`PhoenixClient.Socket`
+module](https://github.com/mobileoverlord/phoenix_client/blob/main/lib/phoenix_client/socket.ex#L57-L91)
+for support options.
+
+Any [valid Erlang ssl socket
+option](http://erlang.org/doc/man/ssl.html#TLS/DTLS%20OPTION%20DESCRIPTIONS%20-%20COMMON%20for%20SERVER%20and%20CLIENT)
+can go in the `:ssl` key.
+
+```elixir
+config :nerves_hub_link,
+  socket: [
+    json_library: Jason,
+    heartbeat_interval: 45_000
+  ],
+  ssl: [
+    cert: "some_cert_der",
+    keyfile: "path/to/keyfile"
+  ]
+```
+
+### Runtime configuration
+
+Some cases require that connection configuration happens at runtime like
+selectively choosing which cert/key to use based on device, or reading a file
+stored on device which isn't available during compilation.
+
+Whatever the reason, `NervesHubLink` also supports runtime configuration via the
+`NervesHubLink.Configurator` behavior. This is called during application startup
+to build the configuration that is to be used for the connection. When
+implementing the behavior, you'll receive the initial default config read in
+from the application environment and you can modify it however you need.
+
+For example:
+
+```elixir
+defmodule MyApp.Configurator do
+  @behaviour NervesHubLink.Configurator
+
+  @impl NervesHubLink.Configurator
+  def build(config) do
+    ssl = [certfile: "/root/ssl/cert.pem", keyfile: "/root/ssl/key.pem"]
+    %{config | ssl: ssl}
+  end
+end
+```
+
+Then you specify which configurator `NervesHubLink` should use in `config.exs`:
+
+```elixir
+config :nerves_hub_link, configurator: MyApp.Configurator
+```
+
 
 ### Conditionally applying updates
 
