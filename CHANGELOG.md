@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2
+
+* Fixes
+  * add `:inets` to to `:extra_applications` to ensure started
+  * fix issue that was allowed unresolved atom keys in `:fwup_public_keys`
+    config which would break firmware updates by failing to validate
+    the public key
+
 ## 0.10.1
 
 * Fixes
